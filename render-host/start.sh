@@ -6,8 +6,8 @@ npm run worker &
   while true; do
     sleep 86400
     for p in refresh-tokens attach-next-reel snapshot-followers; do
-      curl -s -H "Authorization: Bearer $CRON_SECRET" "http://127.0.0.1:7860/api/cron/$p" >/dev/null
+      curl -s -H "Authorization: Bearer $CRON_SECRET" "http://127.0.0.1:${PORT:-7860}/api/cron/$p" >/dev/null
     done
   done
 ) &
-exec npx next start -p 7860 -H 0.0.0.0
+exec npx next start -p ${PORT:-7860} -H 0.0.0.0
