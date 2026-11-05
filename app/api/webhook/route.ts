@@ -261,7 +261,9 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(
       { success: false, error: "Webhook processing failed" },
-      { status: 500 },
+      // 200, not 500: Meta retries 5xx rapidly and that burns the Vercel quota.
+      // The failure is already stored on the WebhookEvent row.
+      { status: 200 },
     );
   }
 }
