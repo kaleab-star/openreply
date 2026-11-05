@@ -12,7 +12,8 @@ function createPrismaClient() {
   }
 
   return new PrismaClient({
-    adapter: new PrismaPg(databaseUrl),
+    // DB_SCHEMA lets OpenReply share a Postgres with other apps; unset = "public".
+    adapter: new PrismaPg(databaseUrl, { schema: process.env.DB_SCHEMA || undefined }),
   });
 }
 
