@@ -25,7 +25,7 @@ export async function GET(request: NextRequest) {
 
   return NextResponse.json(
     { success: false, error: "Verification failed" },
-    { status: 403 }
+    { status: 403 },
   );
 }
 
@@ -53,7 +53,7 @@ export async function POST(request: NextRequest) {
       .catch(() => {});
     return NextResponse.json(
       { success: false, error: "Invalid signature" },
-      { status: 401 }
+      { status: 401 },
     );
   }
 
@@ -63,24 +63,35 @@ export async function POST(request: NextRequest) {
   } catch {
     return NextResponse.json(
       { success: false, error: "Invalid JSON" },
-      { status: 400 }
+      { status: 400 },
     );
   }
 
-  const webhookEvent = await prisma.webhookEvent.create({
-    data: {
-      object:
-        typeof payload === "object" && payload && "object" in payload
-          ? String(payload.object)
-          : null,
-      payload: payload as Prisma.InputJsonValue,
-      status: "PENDING",
-    },
-  });
+  // If the database is down, answer 200 anyway: a 500 makes Meta retry several
+  // times a second, which burns the Vercel free request quota.
+  let webhookEvent;
+  try {
+    webhookEvent = await prisma.webhookEvent.create({
+      data: {
+        object:
+          typeof payload === "object" && payload && "object" in payload
+            ? String(payload.object)
+            : null,
+        payload: payload as Prisma.InputJsonValue,
+        status: "PENDING",
+      },
+    });
+  } catch (error) {
+    console.error("webhook: database unavailable, acknowledging", error);
+    return NextResponse.json(
+      { success: false, error: "Database unavailable" },
+      { status: 200 },
+    );
+  }
 
   try {
     const commentEvents = parseCommentEvents(
-      payload as Parameters<typeof parseCommentEvents>[0]
+      payload as Parameters<typeof parseCommentEvents>[0],
     );
     const queue = getDMQueue();
 
@@ -104,7 +115,7 @@ export async function POST(request: NextRequest) {
         },
         {
           jobId: `comment_${event.instagramAccountId}_${event.commentId}`,
-        }
+        },
       );
 
       if (account) {
@@ -117,7 +128,7 @@ export async function POST(request: NextRequest) {
 
     // Button taps from opening DMs → deliver the reveal message.
     const postbackEvents = parsePostbackEvents(
-      payload as Parameters<typeof parsePostbackEvents>[0]
+      payload as Parameters<typeof parsePostbackEvents>[0],
     );
 
     for (const event of postbackEvents) {
@@ -135,13 +146,13 @@ export async function POST(request: NextRequest) {
           jobId: `postback_${event.instagramAccountId}_${event.userId}_${(
             event.mid ?? event.payload
           ).replace(/:/g, "_")}`,
-        }
+        },
       );
     }
 
     // Inbound DMs → keyword-triggered autoreply.
     const messageEvents = parseMessageEvents(
-      payload as Parameters<typeof parseMessageEvents>[0]
+      payload as Parameters<typeof parseMessageEvents>[0],
     );
 
     for (const event of messageEvents) {
@@ -164,9 +175,9 @@ export async function POST(request: NextRequest) {
           // and stays injective — substituting invalid characters would let two
           // distinct mids collapse onto one job id, silently dropping a reply.
           jobId: `message_${event.instagramAccountId}_${Buffer.from(
-            event.messageId
+            event.messageId,
           ).toString("base64url")}`,
-        }
+        },
       );
 
       if (account) {
@@ -181,7 +192,7 @@ export async function POST(request: NextRequest) {
     // same next-step DM after five minutes. The worker no-ops this delayed job
     // if a real button tap has already delivered the reveal.
     const readEvents = parseReadEvents(
-      payload as Parameters<typeof parseReadEvents>[0]
+      payload as Parameters<typeof parseReadEvents>[0],
     );
 
     for (const event of readEvents) {
@@ -223,7 +234,7 @@ export async function POST(request: NextRequest) {
           {
             delay: OPENING_DM_READ_FALLBACK_DELAY_MS,
             jobId: `read_fallback_${event.instagramAccountId}_${event.userId}_${automation.id}`,
-          }
+          },
         );
       }
     }
@@ -250,7 +261,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(
       { success: false, error: "Webhook processing failed" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
